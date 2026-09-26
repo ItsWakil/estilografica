@@ -1,0 +1,56 @@
+# Builds Estilográfica for Windows and Linux and attaches the installers
+# to a draft GitHub release.
+#
+# Trigger it by pushing a version tag:   git tag v0.1.0 && git push --tags
+# or by hand from the repo's Actions tab ("Run workflow").
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest   # .msi and setup .exe
+          - platform: ubuntu-22.04     # .deb and .rpm
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf rpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Estilográfica v__VERSION__
+          releaseBody: Download the .exe or .msi for Windows, or the .rpm / .deb for Linux.
+          releaseDraft: true
